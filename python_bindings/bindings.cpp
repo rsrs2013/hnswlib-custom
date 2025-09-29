@@ -720,6 +720,15 @@ class Index {
     size_t getCurrentCount() const {
         return appr_alg->cur_element_count;
     }
+
+    size_t getMetricHops() const {
+        return appr_alg->getMetricHops();
+    }
+
+    void resetMetricHops() {
+        return appr_alg->resetMetricHops();
+    }
+
 };
 
 template<typename dist_t, typename data_t = float>
@@ -949,7 +958,10 @@ PYBIND11_PLUGIN(hnswlib) {
         .def("unmark_deleted", &Index<float>::unmarkDeleted, py::arg("label"))
         .def("resize_index", &Index<float>::resizeIndex, py::arg("new_size"))
         .def("get_max_elements", &Index<float>::getMaxElements)
+        .def("get_metric_hops", &Index<float>::getMetricHops)
+        .def("reset_metric_hops", &Index<float>::resetMetricHops)
         .def("get_current_count", &Index<float>::getCurrentCount)
+  
         .def_readonly("space", &Index<float>::space_name)
         .def_readonly("dim", &Index<float>::dim)
         .def_readwrite("num_threads", &Index<float>::num_threads_default)
