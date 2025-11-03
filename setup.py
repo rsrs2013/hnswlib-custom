@@ -129,7 +129,7 @@ class BuildExt(build_ext):
 
 
 setup(
-    name='hnswlib',
+    name='hnswlib_custom',
     version=__version__,
     description='hnswlib',
     author='Yury Malkov and others',

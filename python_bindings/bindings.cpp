@@ -729,6 +729,14 @@ class Index {
         return appr_alg->resetMetricHops();
     }
 
+    size_t getMetricDistComp() const {
+        return appr_alg->getMetricDistComp();
+    }
+
+    void resetMetricDistComp() {
+        return appr_alg->resetMetricDistComp();
+    }
+
 };
 
 template<typename dist_t, typename data_t = float>
@@ -960,6 +968,8 @@ PYBIND11_PLUGIN(hnswlib) {
         .def("get_max_elements", &Index<float>::getMaxElements)
         .def("get_metric_hops", &Index<float>::getMetricHops)
         .def("reset_metric_hops", &Index<float>::resetMetricHops)
+        .def("get_metric_dist_comp", &Index<float>::getMetricDistComp)
+        .def("reset_metric_dist_comp", &Index<float>::resetMetricDistComp)
         .def("get_current_count", &Index<float>::getCurrentCount)
   
         .def_readonly("space", &Index<float>::space_name)
@@ -986,7 +996,35 @@ PYBIND11_PLUGIN(hnswlib) {
         .def_property_readonly("M",  [](const Index<float> & index) {
           return index.index_inited ? index.appr_alg->M_ : 0;
         })
-
+        .def("get_distance_computation_count",
+             [](const Index<float> &index) {
+                 // get the underlying SpaceInterface pointer and cast to L2Space
+                 auto *hnsw = index.appr_alg;
+                 auto *space_iface = hnsw->get_space();
+                 auto *l2space = static_cast<hnswlib::L2Space*>(space_iface);
+                 return l2space->get_distance_computation_count();
+             }) 
+        .def("reset_distance_computation_count",
+             [](const Index<float> &index) {
+                 auto *hnsw = index.appr_alg;
+                 auto *space_iface = hnsw->get_space();
+                 auto *l2space = static_cast<hnswlib::L2Space*>(space_iface);
+                 l2space->reset_distance_computation_count();
+             })
+        .def("get_distance_time_ns",
+            [](const Index<float> &index) {
+                 auto *hnsw = index.appr_alg;
+                 auto *space_iface = hnsw->get_space();
+                 auto *l2space = static_cast<hnswlib::L2Space*>(space_iface);
+                 return l2space->get_distance_time_ns();
+             })    
+        .def("reset_distance_time_ns",
+             [](const Index<float> &index) {
+                 auto *hnsw = index.appr_alg;
+                 auto *space_iface = hnsw->get_space();
+                 auto *l2space = static_cast<hnswlib::L2Space*>(space_iface);
+                 l2space->reset_distance_time_ns();
+             })
         .def(py::pickle(
             [](const Index<float> &ind) {  // __getstate__
                 return py::make_tuple(ind.getIndexParams()); /* Return dict (wrapped in a tuple) that fully encodes state of the Index object */
@@ -996,7 +1034,6 @@ PYBIND11_PLUGIN(hnswlib) {
                     throw std::runtime_error("Invalid state!");
                 return Index<float>::createFromParams(t[0].cast<py::dict>());
             }))
-
         .def("__repr__", [](const Index<float> &a) {
             return "<hnswlib.Index(space='" + a.space_name + "', dim="+std::to_string(a.dim)+")>";
         });

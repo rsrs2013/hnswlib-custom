@@ -16,6 +16,7 @@ typedef unsigned int linklistsizeint;
 
 template<typename dist_t>
 class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+ SpaceInterface<dist_t> *space;
  public:
     static const tableint MAX_LABEL_OPERATION_LOCKS = 65536;
     static const unsigned char DELETE_MARK = 0x01;
@@ -74,6 +75,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     HierarchicalNSW(SpaceInterface<dist_t> *s) {
     }
 
+    // inside template<typename dist_t> class HierarchicalNSW { ... public: ... }
+    SpaceInterface<dist_t>* get_space() const {
+        return space;
+    }
 
     HierarchicalNSW(
         SpaceInterface<dist_t> *s,
@@ -102,6 +107,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         data_size_ = s->get_data_size();
         fstdistfunc_ = s->get_dist_func();
         dist_func_param_ = s->get_dist_func_param();
+        space = s;
         if ( M <= 10000 ) {
             M_ = M;
         } else {
@@ -228,6 +234,14 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     
     void resetMetricHops() {
         metric_hops = 0;
+    }
+
+    size_t getMetricDistComp() const {
+        return metric_distance_computations;
+    }
+    
+    void resetMetricDistComp() {
+        metric_distance_computations = 0;
     }
 
     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>

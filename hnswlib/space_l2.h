@@ -1,7 +1,36 @@
 #pragma once
 #include "hnswlib.h"
+#include <chrono>
 
 namespace hnswlib {
+
+inline uint64_t get_nanoseconds() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::high_resolution_clock::now().time_since_epoch()
+           ).count();
+}
+
+// ---- Replace original L2Sqr with tracked version ----
+/*static float
+L2SqrTracked(const void *pVect1v, const void *pVect2v, const void *qty_ptr) {
+    l2_distance_computation_count.fetch_add(1, std::memory_order_relaxed);
+
+    float *pVect1 = (float *) pVect1v;
+    float *pVect2 = (float *) pVect2v;
+    size_t qty = *((size_t *) qty_ptr);
+
+    float res = 0;
+    for (size_t i = 0; i < qty; i++) {
+        float t = *pVect1 - *pVect2;
+        pVect1++;
+        pVect2++;
+        res += t * t;
+    }
+    return res;
+}*/
+
+class L2Space; // forward declaration
+static float L2SqrTracked(const void *pVect1v, const void *pVect2v, const void *params_ptr);
 
 static float
 L2Sqr(const void *pVect1v, const void *pVect2v, const void *qty_ptr) {
@@ -209,10 +238,22 @@ class L2Space : public SpaceInterface<float> {
     DISTFUNC<float> fstdistfunc_;
     size_t data_size_;
     size_t dim_;
+    // Add per-object atomic distance counter
+    std::atomic<size_t> distance_computations_{0};
+    std::atomic<uint64_t> distance_time_ns_{0};
+
+    // Storage for passing both dim & this instance to the distance function
+    //void* params_[2];
 
  public:
-    L2Space(size_t dim) {
-        fstdistfunc_ = L2Sqr;
+      // parameter block passed into dist function
+    struct DistParams {
+        size_t dim;
+        L2Space* owner;
+    } params_;
+
+    /*L2Space(size_t dim) {
+        fstdistfunc_ = L2SqrTracked;
 #if defined(USE_SSE) || defined(USE_AVX) || defined(USE_AVX512)
     #if defined(USE_AVX512)
         if (AVX512Capable())
@@ -235,6 +276,16 @@ class L2Space : public SpaceInterface<float> {
 #endif
         dim_ = dim;
         data_size_ = dim * sizeof(float);
+        params_.dim = dim;
+        params_.owner = this;
+    }*/
+
+    L2Space(size_t dim) {
+        fstdistfunc_ = L2SqrTracked;
+        dim_ = dim;
+        data_size_ = dim * sizeof(float);
+        params_.dim = dim;
+        params_.owner = this;
     }
 
     size_t get_data_size() {
@@ -245,8 +296,37 @@ class L2Space : public SpaceInterface<float> {
         return fstdistfunc_;
     }
 
-    void *get_dist_func_param() {
+    /*void *get_dist_func_param() {
         return &dim_;
+    }*/
+
+    void *get_dist_func_param() {
+        return &params_;
+    }
+
+ // ✅ Per-object counter accessors
+    size_t get_distance_computation_count() const {
+        return distance_computations_.load(std::memory_order_relaxed);
+    }
+
+    void reset_distance_computation_count() {
+        distance_computations_.store(0, std::memory_order_relaxed);
+    }
+
+    void increment_counter() {
+        distance_computations_.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    uint64_t get_distance_time_ns() const {
+        return distance_time_ns_.load(std::memory_order_relaxed);
+    }
+
+    void reset_distance_time_ns() {
+        distance_time_ns_.store(0, std::memory_order_relaxed);
+    }
+
+    void add_distance_time(uint64_t v) {
+        distance_time_ns_.fetch_add(v, std::memory_order_relaxed);
     }
 
     ~L2Space() {}
@@ -321,4 +401,30 @@ class L2SpaceI : public SpaceInterface<int> {
 
     ~L2SpaceI() {}
 };
+
+static float
+L2SqrTracked(const void *pVect1v, const void *pVect2v, const void *params_ptr) {
+    // qty_ptr actually points to dim_, but we pack the L2Space object alongside it
+    //auto **ctx = (void **) qty_ptr;
+    //size_t dim = *((size_t *) ctx[0]);
+    //L2Space* self = (L2Space*) ctx[1]; // get object pointer
+    auto params = (const L2Space::DistParams*)params_ptr;
+    params->owner->increment_counter();
+    size_t dim = params->dim;
+    
+    //self->distance_computations_.fetch_add(1, std::memory_order_relaxed);
+
+    const float *pVect1 = (const float *) pVect1v;
+    const float *pVect2 = (const float *) pVect2v;
+    uint64_t t0 = hnswlib::get_nanoseconds();
+    float res = 0;
+    for (size_t i = 0; i < dim; i++) {
+        float t = pVect1[i] - pVect2[i];
+        res += t * t;
+    }
+    uint64_t t1 = hnswlib::get_nanoseconds();
+    params->owner->add_distance_time(t1 - t0);
+
+    return res;
+}
 }  // namespace hnswlib
